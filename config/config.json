@@ -1,0 +1,26 @@
+{
+    "_comment": "Settings",
+  
+    "threshold": 0.35,
+    "_threshold_comment": "Tag confidence threshold",
+  
+    "batch_size": 1,
+    "_batch_size_comment": "Images per inference batch",
+  
+    "resize": false,
+    "_resize_comment": "true = resize images and save to dataset folder, false = keep originals",
+  
+    "target_size": 1024,
+    "_target_size_comment": "Max image side when resizing",
+  
+    "output_folder_name": "dataset",
+    "_output_comment": "Output folder name (used only if resize = true)",
+  
+    "model_repo": "SmilingWolf/wd-swinv2-tagger-v3",
+    "model_file": "model.onnx",
+    "label_file": "selected_tags.csv",
+    "_model_comment": "Model files from HuggingFace",
+  
+    "extensions": [".jpg", ".jpeg", ".png", ".webp"],
+    "_extensions_comment": "Allowed image formats"
+  }

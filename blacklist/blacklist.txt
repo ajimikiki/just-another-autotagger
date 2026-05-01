@@ -1,0 +1,2 @@
+#add blacklisted tags here 
+#one tag per line

@@ -1,0 +1,25 @@
+# Dependencies
+libs/
+
+# HuggingFace cache
+libs/hf_cache/
+
+# Output datasets
+dataset/
+
+# Models
+*.onnx
+
+# Images
+*.jpg
+*.jpeg
+*.png
+*.webp
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db

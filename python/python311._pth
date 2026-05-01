@@ -1,0 +1,4 @@
+python311.zip
+.
+..\libs
+import site

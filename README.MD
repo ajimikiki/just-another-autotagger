@@ -13,4 +13,10 @@ Minimal CLI tool for tagging and resizing image datasets.
 ## Usage
 
 Run setup.bat once to install everything. All dependencies will be installed in the libs folder and will use about 600 MB of disk space.
+
 After that, use run.bat.
+
+## Credits
+
+This project uses the wd-swinv2-tagger-v3 model by SmilingWolf:  
+https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3

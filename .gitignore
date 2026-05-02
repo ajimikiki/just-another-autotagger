@@ -1,5 +1,6 @@
 # Dependencies
-libs/
+libs/*
+!libs/autotag.py
 
 # HuggingFace cache
 libs/hf_cache/

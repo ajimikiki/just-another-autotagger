@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 from collections import defaultdict
+import msvcrt
 
 os.system("")
 
@@ -13,6 +14,7 @@ LIBS_PATH = Path(__file__).resolve().parent
 
 LIBS_PATH.mkdir(exist_ok=True)
 sys.path.append(str(LIBS_PATH))
+
 
 def ensure_package(package, import_name=None):
     try:
@@ -29,18 +31,12 @@ def ensure_package(package, import_name=None):
             package
         ])
 
+
 ensure_package("pillow", "PIL")
 ensure_package("numpy")
 ensure_package("tqdm")
 ensure_package("huggingface_hub")
 ensure_package("onnxruntime")
-
-HF_CACHE = BASE_PATH / "libs" / "hf_cache"
-HF_CACHE.mkdir(parents=True, exist_ok=True)
-
-os.environ["HF_HOME"] = str(HF_CACHE)
-os.environ["HF_HUB_CACHE"] = str(HF_CACHE)
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 from PIL import Image
 import numpy as np
@@ -49,11 +45,20 @@ from huggingface_hub import hf_hub_download
 import csv
 from tqdm import tqdm
 
+HF_CACHE = BASE_PATH / "libs" / "hf_cache"
+HF_CACHE.mkdir(parents=True, exist_ok=True)
+
+os.environ["HF_HOME"] = str(HF_CACHE)
+os.environ["HF_HUB_CACHE"] = str(HF_CACHE)
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+
 def load_config(path):
     if not path.exists():
         return {}
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 def load_blacklist(path):
     if not path.exists():
@@ -67,11 +72,12 @@ def load_blacklist(path):
             if not line or line.startswith("#"):
                 continue
 
-            clean = line.lower().strip()
+            clean = line.lower()
             result.add(clean)
             result.add(clean.replace(" ", "_"))
 
     return result
+
 
 def load_model(repo, model_file, label_file):
     try:
@@ -83,16 +89,7 @@ def load_model(repo, model_file, label_file):
         model_path = hf_hub_download(repo_id=repo, filename=model_file)
         label_path = hf_hub_download(repo_id=repo, filename=label_file)
 
-    so = ort.SessionOptions()
-    so.intra_op_num_threads = 0
-    so.inter_op_num_threads = 0
-    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-    session = ort.InferenceSession(
-        model_path,
-        sess_options=so,
-        providers=["CPUExecutionProvider"]
-    )
+    session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
 
     tags = []
     with open(label_path, newline="", encoding="utf-8") as f:
@@ -103,11 +100,13 @@ def load_model(repo, model_file, label_file):
 
     return session, tags
 
+
 def preprocess(img):
     img = img.resize((448, 448))
     arr = np.array(img).astype(np.float32)
     arr = arr[:, :, ::-1]
     return np.expand_dims(arr, 0)
+
 
 def process_image(file, resize_enabled, output_folder, target_size):
     img = Image.open(file).convert("RGB")
@@ -122,19 +121,14 @@ def process_image(file, resize_enabled, output_folder, target_size):
 
         txt_path = output_image.with_suffix(".txt")
 
-        # 🔥 копируем существующий txt
         src_txt = file.with_suffix(".txt")
         if src_txt.exists() and not txt_path.exists():
-            with open(src_txt, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
+            txt_path.write_text(src_txt.read_text(encoding="utf-8"), encoding="utf-8")
     else:
         txt_path = file.with_suffix(".txt")
 
     return img, txt_path
+
 
 def predict_batch(session, tags, images, threshold):
     input_name = session.get_inputs()[0].name
@@ -145,11 +139,10 @@ def predict_batch(session, tags, images, threshold):
         for pred in preds
     ]
 
+
 def run_batch(session, tags, images, txt_paths, threshold, trigger, blacklist):
     images_np = np.vstack(images)
     results = predict_batch(session, tags, images_np, threshold)
-
-    count = 0
 
     for txt_path, result in zip(txt_paths, results):
         filtered = []
@@ -160,50 +153,74 @@ def run_batch(session, tags, images, txt_paths, threshold, trigger, blacklist):
 
             if t_lower in blacklist or t_spaced in blacklist:
                 continue
-
             if any(b in t_spaced for b in blacklist):
                 continue
-
-            words = t_spaced.split()
-            if any(b in words for b in blacklist):
+            if any(b in t_spaced.split() for b in blacklist):
                 continue
 
-            clean_tag = t.replace("_", " ").strip()
-            filtered.append(clean_tag)
+            filtered.append(t_spaced)
 
         if txt_path.exists():
-            with open(txt_path, "r", encoding="utf-8") as f:
-                existing = [x.strip() for x in f.read().split(",") if x.strip()]
-
+            existing = [x.strip() for x in txt_path.read_text(encoding="utf-8").split(",") if x.strip()]
             if trigger and trigger not in existing:
                 existing.insert(0, trigger)
-
             final_tags = existing
-
         else:
             final_tags = [trigger] + filtered if trigger else filtered
 
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(", ".join(final_tags))
+        txt_path.write_text(", ".join(final_tags), encoding="utf-8")
 
-        count += 1
 
-    return count
+def rename_duplicates(files):
+    groups = defaultdict(list)
+    for f in files:
+        groups[f.stem].append(f)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--folder", required=True)
-    parser.add_argument("--trigger")
-    parser.add_argument("--threshold", type=float)
-    parser.add_argument("--force", action="store_true")
-    parser.add_argument("--config")
+    duplicates = {k: v for k, v in groups.items() if len(v) > 1}
 
-    args = parser.parse_args()
+    if not duplicates:
+        return False
 
-    config_path = Path(args.config) if args.config else BASE_PATH / "config" / "config.json"
-    config = load_config(config_path)
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
 
-    threshold = args.threshold if args.threshold else config.get("threshold", 0.35)
+    print("\nDuplicate filenames detected:")
+    for k, v in duplicates.items():
+        print(f"  {k}: {[x.name for x in v]}")
+
+    print(f"\n{YELLOW}WARNING: image files must have a unique name.{RESET}")
+    print("Press Enter to rename duplicates or press Esc to exit.")
+
+    while True:
+        key = msvcrt.getch()
+        if key == b'\r':
+            break
+        elif key == b'\x1b':
+            print("Exiting.\n")
+            sys.exit()
+
+    print("\nRenaming duplicate filenames...")
+
+    for stem, files in duplicates.items():
+        files_sorted = sorted(files, key=lambda x: x.name)
+
+        for i, f in enumerate(files_sorted, start=1):
+            new_name = f"{stem}_{i}{f.suffix}"
+            new_path = f.with_name(new_name)
+            f.rename(new_path)
+
+    print("Renaming done.\n")
+    return True
+
+
+def process_folder(folder, args, config, session, tags):
+    folder = Path(folder).expanduser().resolve()
+
+    if not folder.exists():
+        print("Folder not found")
+        return
+
+    threshold = args.threshold or config.get("threshold", 0.35)
 
     resize_enabled = config.get("resize", True)
     user_input = input("Enable resize? (y/n): ").strip().lower()
@@ -215,73 +232,19 @@ def main():
     batch_size = config.get("batch_size", 16)
     target_size = config.get("target_size", 1024)
 
-    model_repo = config.get("model_repo")
-    model_file = config.get("model_file")
-    label_file = config.get("label_file")
-
     output_folder_name = config.get("output_folder_name", "dataset")
     extensions = config.get("extensions", [".jpg", ".jpeg", ".png", ".webp"])
 
-    folder = Path(args.folder)
-    if not folder.exists():
-        print("Folder not found")
-        return
-
     blacklist = load_blacklist(BASE_PATH / "blacklist" / "blacklist.txt")
 
-    if resize_enabled:
-        output_folder = folder / output_folder_name
+    output_folder = folder / output_folder_name if resize_enabled else None
+    if output_folder:
         output_folder.mkdir(exist_ok=True)
-    else:
-        output_folder = None
 
-    image_files = [f for f in folder.iterdir() if f.suffix.lower() in extensions]
-
-    RED = "\033[31m"
-    RESET = "\033[0m"
-
-    name_map = defaultdict(list)
-
-    for f in image_files:
-        name_map[f.stem].append(f)
-
-    duplicates = {k: v for k, v in name_map.items() if len(v) > 1}
-
-    if duplicates:
-        print(f"\n{RED}ERROR: Duplicate base filenames detected:{RESET}")
-
-        for k, v in duplicates.items():
-            print(f"  {k}: {[x.name for x in v]}")
-
-        choice = input("\nAuto-rename duplicates via PowerShell? (y/n): ").strip().lower()
-
-        if choice == "y":
-            folder_str = str(folder)
-
-            ps_script = rf"""
-Get-ChildItem -Path "{folder_str}" -File |
-Group-Object BaseName |
-Where-Object {{ $_.Count -gt 1 }} |
-ForEach-Object {{
-    $i = 1
-    $_.Group | Sort-Object Name | ForEach-Object {{
-        $newName = "$($_.BaseName)_$i$($_.Extension)"
-        Rename-Item $_.FullName $newName
-        $i++
-    }}
-}}
-"""
-
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps_script])
-            print("\nFiles renamed. Restart the script.\n")
-            return
-        else:
-            print("\nAborted.\n")
-            return
-
-    session, tags = load_model(model_repo, model_file, label_file)
-
-    processed = 0
+    while True:
+        image_files = [f for f in folder.iterdir() if f.suffix.lower() in extensions]
+        if not rename_duplicates(image_files):
+            break
 
     batch_images = []
     batch_txt = []
@@ -289,14 +252,11 @@ ForEach-Object {{
     for file in tqdm(image_files):
         try:
             img, txt_path = process_image(file, resize_enabled, output_folder, target_size)
-
-            image = preprocess(img)
-
-            batch_images.append(image)
+            batch_images.append(preprocess(img))
             batch_txt.append(txt_path)
 
             if len(batch_images) == batch_size:
-                processed += run_batch(session, tags, batch_images, batch_txt, threshold, args.trigger, blacklist)
+                run_batch(session, tags, batch_images, batch_txt, threshold, args.trigger, blacklist)
                 batch_images.clear()
                 batch_txt.clear()
 
@@ -304,9 +264,52 @@ ForEach-Object {{
             print(f"Error with {file.name}: {e}")
 
     if batch_images:
-        processed += run_batch(session, tags, batch_images, batch_txt, threshold, args.trigger, blacklist)
+        run_batch(session, tags, batch_images, batch_txt, threshold, args.trigger, blacklist)
 
     print("Done.")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--folder", required=True)
+    parser.add_argument("--trigger")
+    parser.add_argument("--threshold", type=float)
+    parser.add_argument("--config")
+
+    args = parser.parse_args()
+
+    config_path = Path(args.config) if args.config else BASE_PATH / "config" / "config.json"
+    config = load_config(config_path)
+
+    session, tags = load_model(
+        config.get("model_repo"),
+        config.get("model_file"),
+        config.get("label_file")
+    )
+
+    current_folder = args.folder
+
+    while True:
+        process_folder(current_folder, args, config, session, tags)
+
+        print("Press Enter to continue tagging or press Esc to exit...")
+
+        while True:
+            key = msvcrt.getch()
+            if key == b'\r':
+                break
+            elif key == b'\x1b':
+                return
+
+        next_folder = input("Enter next folder path: ").strip()
+        if not next_folder:
+            break
+
+        new_trigger = input("Enter trigger tag (or leave empty): ").strip()
+        args.trigger = new_trigger if new_trigger else None
+
+        current_folder = next_folder
+
 
 if __name__ == "__main__":
     main()

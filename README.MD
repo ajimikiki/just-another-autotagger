@@ -1,4 +1,4 @@
-![Screenshot](https://raw.githubusercontent.com/ajimikiki/just-another-autotagger/main/screenshot.png)
+![Screenshot](https://i.imgur.com/xoKlfJW.png)
 # Just Another Autotagger
 
 Minimal CLI tool for tagging and resizing image datasets.

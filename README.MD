@@ -6,26 +6,27 @@ Minimal CLI tool for tagging and resizing image datasets.
 ## Features
 
 - Tag images using the wd-swinv2-tagger-v3 model
-- Prepend existing .txt files with a trigger word
-- Resize images (1024px by default; resized images are saved in the dataset folder)
-- Blacklist certain tags from being added to .txt (edit blacklist.txt)
-- Rename images that have the same name but different extensions
+- Prepend existing `.txt` files with a trigger word
+- Resize images (1024px by default; output is saved to the `dataset` folder)
+- Exclude unwanted tags using `blacklist.txt`
+- Automatically rename files with the same base name but different extensions
 
 ## Usage
 
-Run setup.bat once to install everything. All dependencies will be installed in the libs folder and will use about 600 MB of disk space.
+Run `setup.bat` once to install all dependencies (~600 MB, installed into the `libs` folder).
 
-After that, use run.bat.
+After that, run `run.bat`.
 
 ## Changelog
 
-Version 1.1.0
-- Added cull and cull-whitelist functionality (to enable )
-- To enable cull, edit `config.json` and change the `"auto_cull"` value to `true`.
-- Cull removes less specific tags (e.g., "dress" → removed when "china dress" exists)
-- Skip tagging when .txt exists (resize, trigger, and cull still apply)
+### Version 1.1.0
 
-## Credits
+- Added `cull` and `cull_whitelist` functionality  
+- To enable cull, set `"auto_cull": true` in `config.json`  
+- Cull removes less specific tags when a more specific tag is present  
+  (e.g., `dress` is removed if `china dress` exists)
+- Added option to skip tagging if a `.txt` file already exists  
+  (resize, trigger, and cull still apply)
 
 This project uses the wd-swinv2-tagger-v3 model by SmilingWolf:  
 https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3

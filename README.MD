@@ -17,6 +17,13 @@ Run setup.bat once to install everything. All dependencies will be installed in 
 
 After that, use run.bat.
 
+## Changelog
+
+Version 1.1.0
+- Added cull and cull-whitelist functionality
+- Cull removes less specific tags (e.g., "dress" → removed when "china dress" exists)
+- Skip tagging when .txt exists (resize, trigger, and cull still apply)
+
 ## Credits
 
 This project uses the wd-swinv2-tagger-v3 model by SmilingWolf:  

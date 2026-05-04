@@ -1,4 +1,4 @@
-![Screenshot]
+![Screenshot](https://i.imgur.com/2spbvIY.png)
 # Just Another Autotagger
 
 Minimal CLI tool for tagging and resizing image datasets.

@@ -60,7 +60,7 @@ def load_config(path):
         return json.load(f)
 
 
-def load_blacklist(path):
+def load_list(path):
     if not path.exists():
         return set()
 
@@ -140,6 +140,46 @@ def predict_batch(session, tags, images, threshold):
     ]
 
 
+def apply_tag_cull(tags, whitelist):
+    tags = list(dict.fromkeys(tags))
+    lowered = [t.lower() for t in tags]
+    keep = [True] * len(tags)
+
+    for i, t in enumerate(lowered):
+        if t in whitelist:
+            continue
+
+        for j, other in enumerate(lowered):
+            if i == j:
+                continue
+
+            if other in whitelist:
+                continue
+
+            if f" {t} " in f" {other} " and len(other) > len(t):
+                keep[i] = False
+                break
+
+    kept = [t for t, k in zip(tags, keep) if k]
+    removed = [t for t, k in zip(tags, keep) if not k]
+
+    return kept, removed
+
+
+def cull_existing_txt(folder, whitelist):
+    txt_files = list(Path(folder).glob("*.txt"))
+
+    for txt in txt_files:
+        tags = [x.strip() for x in txt.read_text(encoding="utf-8").split(",") if x.strip()]
+        new_tags, removed = apply_tag_cull(tags, whitelist)
+
+        if removed:
+            print(f"[CULL] {txt.name}: removed -> {', '.join(removed)}")
+            txt.write_text(", ".join(new_tags), encoding="utf-8")
+
+    print("Cull complete.")
+
+
 def run_batch(session, tags, images, txt_paths, threshold, trigger, blacklist):
     images_np = np.vstack(images)
     results = predict_batch(session, tags, images_np, threshold)
@@ -189,36 +229,25 @@ def rename_duplicates(files):
         print(f"  {k}: {[x.name for x in v]}")
 
     print(f"\n{YELLOW}WARNING: image files must have a unique name.{RESET}")
-    print("Press Enter to rename duplicates or press Esc to exit.")
+    print(f"\n{YELLOW}Press Enter to rename duplicates or press Esc to exit.{RESET}")
 
     while True:
         key = msvcrt.getch()
         if key == b'\r':
             break
         elif key == b'\x1b':
-            print("Exiting.\n")
             sys.exit()
-
-    print("\nRenaming duplicate filenames...")
 
     for stem, files in duplicates.items():
         files_sorted = sorted(files, key=lambda x: x.name)
-
         for i, f in enumerate(files_sorted, start=1):
-            new_name = f"{stem}_{i}{f.suffix}"
-            new_path = f.with_name(new_name)
-            f.rename(new_path)
+            f.rename(f.with_name(f"{stem}_{i}{f.suffix}"))
 
-    print("Renaming done.\n")
     return True
 
 
 def process_folder(folder, args, config, session, tags):
     folder = Path(folder).expanduser().resolve()
-
-    if not folder.exists():
-        print("Folder not found")
-        return
 
     threshold = args.threshold or config.get("threshold", 0.35)
 
@@ -229,13 +258,22 @@ def process_folder(folder, args, config, session, tags):
     elif user_input == "n":
         resize_enabled = False
 
+    config_auto_cull = config.get("auto_cull", True)
+
+    if config_auto_cull:
+        auto_cull = input("Auto-cull all .txt after tagging? (y/n): ").strip().lower() == "y"
+    else:
+        auto_cull = False
+
     batch_size = config.get("batch_size", 16)
     target_size = config.get("target_size", 1024)
 
     output_folder_name = config.get("output_folder_name", "dataset")
     extensions = config.get("extensions", [".jpg", ".jpeg", ".png", ".webp"])
 
-    blacklist = load_blacklist(BASE_PATH / "blacklist" / "blacklist.txt")
+    config_dir = BASE_PATH / "config"
+    blacklist = load_list(config_dir / "blacklist.txt")
+    whitelist = load_list(config_dir / "cull-whitelist.txt")
 
     output_folder = folder / output_folder_name if resize_enabled else None
     if output_folder:
@@ -250,8 +288,15 @@ def process_folder(folder, args, config, session, tags):
     batch_txt = []
 
     for file in tqdm(image_files):
-        try:
-            img, txt_path = process_image(file, resize_enabled, output_folder, target_size)
+        img, txt_path = process_image(file, resize_enabled, output_folder, target_size)
+
+        if txt_path.exists():
+            if args.trigger:
+                existing = [x.strip() for x in txt_path.read_text(encoding="utf-8").split(",") if x.strip()]
+                if args.trigger not in existing:
+                    existing.insert(0, args.trigger)
+                    txt_path.write_text(", ".join(existing), encoding="utf-8")
+        else:
             batch_images.append(preprocess(img))
             batch_txt.append(txt_path)
 
@@ -260,13 +305,25 @@ def process_folder(folder, args, config, session, tags):
                 batch_images.clear()
                 batch_txt.clear()
 
-        except Exception as e:
-            print(f"Error with {file.name}: {e}")
-
     if batch_images:
         run_batch(session, tags, batch_images, batch_txt, threshold, args.trigger, blacklist)
 
+    if auto_cull:
+        print("\nRunning auto-cull...")
+        cull_existing_txt(output_folder if output_folder else folder, whitelist)
+
     print("Done.")
+
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
+    print(f"\n{YELLOW}Press Enter to continue tagging or press Esc to exit. {RESET}")
+
+    while True:
+        key = msvcrt.getch()
+        if key == b'\r':
+            break
+        elif key == b'\x1b':
+            sys.exit()
 
 
 def main():
@@ -291,15 +348,6 @@ def main():
 
     while True:
         process_folder(current_folder, args, config, session, tags)
-
-        print("Press Enter to continue tagging or press Esc to exit...")
-
-        while True:
-            key = msvcrt.getch()
-            if key == b'\r':
-                break
-            elif key == b'\x1b':
-                return
 
         next_folder = input("Enter next folder path: ").strip()
         if not next_folder:

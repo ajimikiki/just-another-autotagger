@@ -1,0 +1,2 @@
+#add whitelisted tags here 
+#one tag per line

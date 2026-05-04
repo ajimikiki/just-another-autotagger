@@ -16,6 +16,9 @@
     "output_folder_name": "dataset",
     "_output_comment": "Output folder name (used only if resize = true)",
   
+    "auto_cull": false,
+    "_autocull_comment": "",
+
     "model_repo": "SmilingWolf/wd-swinv2-tagger-v3",
     "model_file": "model.onnx",
     "label_file": "selected_tags.csv",
@@ -23,4 +26,7 @@
   
     "extensions": [".jpg", ".jpeg", ".png", ".webp"],
     "_extensions_comment": "Allowed image formats"
+  
+  
+
   }

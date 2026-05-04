@@ -1,4 +1,4 @@
-![Screenshot](https://i.imgur.com/xoKlfJW.png)
+![Screenshot]
 # Just Another Autotagger
 
 Minimal CLI tool for tagging and resizing image datasets.
@@ -20,7 +20,8 @@ After that, use run.bat.
 ## Changelog
 
 Version 1.1.0
-- Added cull and cull-whitelist functionality
+- Added cull and cull-whitelist functionality (to enable )
+- To enable cull, edit `config.json` and change the `"auto_cull"` value to `true`.
 - Cull removes less specific tags (e.g., "dress" → removed when "china dress" exists)
 - Skip tagging when .txt exists (resize, trigger, and cull still apply)
 

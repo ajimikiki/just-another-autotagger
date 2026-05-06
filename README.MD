@@ -7,7 +7,7 @@ Minimal CLI tool for tagging and resizing image datasets.
 - Tag images using the `wd-swinv2-tagger-v3` model
 - Prepend existing `.txt` captions with a trigger word
 - Resize images (1024px by default; output is saved to the `dataset` folder)
-- Automatically convert obscure image formats (`.avif`, `jfif`, `.heic`) to `.jpg`
+- Automatically convert obscure image formats (`.avif`, `.jfif`, `.heic`) to `.jpg`
 - Exclude unwanted tags using `blacklist.txt`
 - Automatically rename files with identical base names but different extensions
 - Cull redundant or overlapping tags

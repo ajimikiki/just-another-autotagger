@@ -6,6 +6,7 @@ import json
 import os
 from collections import defaultdict
 import msvcrt
+from importlib.util import spec_from_file_location, module_from_spec
 
 os.system("")
 
@@ -39,6 +40,64 @@ ensure_package("huggingface_hub")
 ensure_package("onnxruntime")
 
 from PIL import Image
+
+SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+UNSUPPORTED_EXTENSIONS = {
+    ".bmp",
+    ".gif",
+    ".tiff",
+    ".tif",
+    ".avif",
+    ".heic",
+    ".jfif"
+}
+
+
+def convert_unsupported_images(folder):
+    unsupported_folder = folder / "unsupported_originals"
+    unsupported_folder.mkdir(exist_ok=True)
+
+    converted = 0
+
+    for file in folder.iterdir():
+        if not file.is_file():
+            continue
+
+        ext = file.suffix.lower()
+
+        if ext not in UNSUPPORTED_EXTENSIONS:
+            continue
+
+        try:
+            img = Image.open(file).convert("RGB")
+
+            new_file = file.with_suffix(".jpg")
+
+            counter = 1
+            while new_file.exists():
+                new_file = file.with_name(f"{file.stem}_{counter}.jpg")
+                counter += 1
+
+            img.save(new_file, quality=95)
+
+            moved_original = unsupported_folder / file.name
+            file.rename(moved_original)
+
+            txt_file = file.with_suffix(".txt")
+            if txt_file.exists():
+                txt_target = unsupported_folder / txt_file.name
+                txt_file.rename(txt_target)
+
+            print(f"Converted: {file.name} -> {new_file.name}")
+            converted += 1
+
+        except Exception as e:
+            print(f"Failed to convert {file.name}: {e}")
+
+    if converted:
+        print(f"\nConverted unsupported images: {converted}\n")
+
 import numpy as np
 import onnxruntime as ort
 from huggingface_hub import hf_hub_download
@@ -78,6 +137,60 @@ def load_list(path):
 
     return result
 
+def run_dupe_search(folder, extensions):
+    script_path = LIBS_PATH / "dupe-search.py"
+
+    if not script_path.exists():
+        return
+
+    spec = spec_from_file_location("dupe_search", script_path)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    hashes = {}
+    threshold = 8
+    found = False
+
+    image_files = [f for f in folder.iterdir() if f.suffix.lower() in extensions]
+
+    for file in image_files:
+        try:
+            img = module.Image.open(file).convert("RGB")
+            h = module.imagehash.phash(img)
+
+            matched = False
+
+            for existing_hash, group in hashes.items():
+                if h - existing_hash <= threshold:
+                    group.append(file)
+                    matched = True
+                    break
+
+            if not matched:
+                hashes[h] = [file]
+
+        except:
+            pass
+
+    group_id = 1
+
+    for group in hashes.values():
+        if len(group) > 1:
+            found = True
+
+            print(f"\n[Group {group_id}]\n")
+
+            for file in group:
+                print(module.make_link(file))
+
+            group_id += 1
+
+    if found:
+        yellow = "\033[33m"
+        reset = "\033[0m"
+
+        print(f"\n{yellow}Possible duplicates found. Please review manually.")
+        print("Ctrl+Left click file names to open images." + reset + "\n")
 
 def load_model(repo, model_file, label_file):
     try:
@@ -312,7 +425,11 @@ def process_folder(folder, args, config, session, tags):
         print("\nRunning auto-cull...")
         cull_existing_txt(output_folder if output_folder else folder, whitelist)
 
+    if config.get("dupe_search", False):
+        run_dupe_search(output_folder if output_folder else folder, extensions)
+
     print("Done.")
+
 
     YELLOW = "\033[33m"
     RESET = "\033[0m"
@@ -335,7 +452,12 @@ def main():
 
     args = parser.parse_args()
 
-    config_path = Path(args.config) if args.config else BASE_PATH / "config" / "config.json"
+    config_path = (
+        Path(args.config)
+        if args.config
+        else BASE_PATH / "config" / "config.json"
+    )
+
     config = load_config(config_path)
 
     session, tags = load_model(
@@ -347,15 +469,31 @@ def main():
     current_folder = args.folder
 
     while True:
-        process_folder(current_folder, args, config, session, tags)
+        folder = Path(current_folder)
 
-        next_folder = input("Enter next folder path: ").strip()
+        if not folder.exists():
+            print("Folder not found")
+        else:
+            convert_unsupported_images(folder)
+
+            process_folder(
+                current_folder,
+                args,
+                config,
+                session,
+                tags
+            )
+
+        next_folder = input("\nEnter next folder path: ").strip()
+
         if not next_folder:
             break
 
-        new_trigger = input("Enter trigger tag (or leave empty): ").strip()
-        args.trigger = new_trigger if new_trigger else None
+        new_trigger = input(
+            "Enter trigger tag (or leave empty): "
+        ).strip()
 
+        args.trigger = new_trigger if new_trigger else None
         current_folder = next_folder
 
 

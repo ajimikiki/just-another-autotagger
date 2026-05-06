@@ -1,6 +1,7 @@
 # Dependencies
 libs/*
 !libs/autotag.py
+!libs/dupe-search.py
 
 # HuggingFace cache
 libs/hf_cache/

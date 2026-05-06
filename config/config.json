@@ -17,7 +17,10 @@
     "_output_comment": "Output folder name (used only if resize = true)",
   
     "auto_cull": false,
-    "_autocull_comment": "Cull removes less specific tags (e.g., dress → removed when china dress tag exists)",
+    "_autocull_comment": "",
+
+    "dupe_search": true,
+    "_dupe_search_comment": "Search for visually similar images after tagging",
 
     "model_repo": "SmilingWolf/wd-swinv2-tagger-v3",
     "model_file": "model.onnx",

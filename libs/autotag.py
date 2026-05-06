@@ -56,7 +56,6 @@ UNSUPPORTED_EXTENSIONS = {
 
 def convert_unsupported_images(folder):
     unsupported_folder = folder / "unsupported_originals"
-    unsupported_folder.mkdir(exist_ok=True)
 
     converted = 0
 
@@ -80,6 +79,8 @@ def convert_unsupported_images(folder):
                 counter += 1
 
             img.save(new_file, quality=95)
+
+            unsupported_folder.mkdir(exist_ok=True)
 
             moved_original = unsupported_folder / file.name
             file.rename(moved_original)
